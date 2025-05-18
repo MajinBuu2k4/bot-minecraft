@@ -3,7 +3,7 @@ const webInventory = require('mineflayer-web-inventory');
 const { pathfinder, Movements, goals: { GoalBlock } } = require('mineflayer-pathfinder');
 
 let bot;
-const INVENTORY_PORT = 3000;
+const INVENTORY_PORT = 3002;
 
 function createBot() {
   let loggedIn = false;
@@ -28,7 +28,11 @@ function createBot() {
 
   bot.on('message', (message) => {
     const msg = message.toString();
-    console.log(message.toAnsi()); // Log chat màu sắc
+    if (message.toAnsi) {
+      console.log(message.toAnsi()); // Màu console đẹp
+    } else {
+      console.log(msg);
+    }
 
     if (msg.includes('/login') && !loggedIn) {
       bot.chat('/login Phuc2005');
@@ -78,6 +82,7 @@ function createBot() {
   process.stdin.on('data', async data => {
     const input = data.toString().trim();
 
+    // Lệnh #goto z -> dùng x=23, y=55 mặc định
     if (input.startsWith('#goto')) {
       const args = input.split(' ').slice(1);
       if (args.length === 3) {
@@ -100,8 +105,39 @@ function createBot() {
       } else {
         console.log("⚠️ Cú pháp đúng: #goto x y z (x=23, y=55 mặc định)");
       }
-    } else if (input.length > 0) {
-      bot.chat(input); // Gửi chat nếu không phải #goto
+      return;
+    }
+
+    // Lệnh #look yaw pitch
+    if (input.startsWith('#look')) {
+      const args = input.split(' ').slice(1);
+      if (args.length === 2) {
+        const yawDeg = parseFloat(args[0]);
+        const pitchDeg = parseFloat(args[1]);
+
+        if (isNaN(yawDeg) || isNaN(pitchDeg)) {
+          console.log("⚠️ Cú pháp không hợp lệ. Ví dụ: #look 90 0");
+          return;
+        }
+
+        const yawRad = yawDeg * (Math.PI / 180);
+        const pitchRad = pitchDeg * (Math.PI / 180);
+
+        try {
+          await bot.look(yawRad, pitchRad);
+          console.log(`👀 Bot đã quay mặt: yaw ${yawDeg}°, pitch ${pitchDeg}°`);
+        } catch (err) {
+          console.log("⚠️ Lỗi khi quay đầu:", err.message);
+        }
+      } else {
+        console.log("⚠️ Dùng đúng cú pháp: #look yaw pitch (VD: #look 90 0)");
+      }
+      return;
+    }
+
+    // Nếu không phải lệnh đặc biệt, gửi như tin nhắn chat
+    if (input.length > 0) {
+      bot.chat(input);
       console.log(`⌨️ Gửi chat: ${input}`);
     }
   });
