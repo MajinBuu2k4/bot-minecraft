@@ -4,6 +4,7 @@ const { pathfinder, Movements, goals: { GoalBlock } } = require('mineflayer-path
 
 let bot;
 const INVENTORY_PORT = 3002;
+let checkClockInterval;
 
 function createBot() {
   let loggedIn = false;
@@ -24,22 +25,33 @@ function createBot() {
 
     console.log("🟢 Bot đã vào game, chờ login...");
     console.log(`🌐 Xem inventory tại: http://localhost:${INVENTORY_PORT}`);
+
+    // Kiểm tra Clock slot 4 mỗi 10s
+    checkClockInterval = setInterval(() => {
+      if (loggedIn && !menuOpened) {
+        const slot4 = bot.inventory.slots[36 + 4]; // Hotbar slot 4 (index 40)
+        
+        if (slot4?.name === 'minecraft:clock') {
+          bot.setQuickBarSlot(4);
+          bot.activateItem();
+        }
+      }
+    }, 10000);
   });
 
   bot.on('message', (message) => {
     const msg = message.toString();
-    if (message.toAnsi) {
-      console.log(message.toAnsi()); // Màu console đẹp
-    } else {
-      console.log(msg);
-    }
+    if (message.toAnsi) console.log(message.toAnsi());
+    else console.log(msg);
 
+    // Xử lý login
     if (msg.includes('/login') && !loggedIn) {
       bot.chat('/login Phuc2005');
       loggedIn = true;
       console.log("🔐 Đã gửi lệnh /login");
     }
 
+    // Mở menu sau khi login
     if (msg.includes('Đăng nhập thành công') && !menuOpened) {
       setTimeout(() => {
         console.log("🕹 Dùng đồng hồ mở menu chọn chế độ");
@@ -48,6 +60,7 @@ function createBot() {
       }, 1000);
     }
 
+    // Click chế độ
     if (msg.includes('Bạn đã mở bảng chọn máy chủ!') && !menuOpened) {
       console.log("📥 Menu mở, chuẩn bị click slot 22 và 34");
       menuOpened = true;
@@ -64,90 +77,83 @@ function createBot() {
     }
   });
 
-  bot.on('kicked', (reason) => {
-    console.log("❌ Bị kick khỏi server:", reason);
-    reconnect();
+  // Reset trạng thái khi vào sảnh
+  bot.on('respawn', () => {
+    menuOpened = false;
+    console.log('♻️ Đã reset trạng thái menu khi vào sảnh');
   });
 
-  bot.on('end', () => {
-    console.log("❌ Bot bị disconnect");
-    reconnect();
-  });
-
-  bot.on('error', (err) => {
-    console.log("⚠️ Lỗi:", err);
-  });
-
-  // Lệnh điều khiển riêng tư qua terminal
+  // Lệnh điều khiển từ terminal
   process.stdin.on('data', async data => {
     const input = data.toString().trim();
 
-    // Lệnh #goto z -> dùng x=23, y=55 mặc định
+    // Lệnh #goto
     if (input.startsWith('#goto')) {
       const args = input.split(' ').slice(1);
       if (args.length === 3) {
         const z = parseInt(args[2]);
-        if (isNaN(z)) {
-          console.log("⚠️ Tọa độ z không hợp lệ!");
-          return;
-        }
-
-        const x = 23;
-        const y = 55;
-
+        if (isNaN(z)) return console.log("⚠️ Tọa độ z không hợp lệ!");
+        
+        const x = 23, y = 55;
         try {
-          console.log(`🧭 Bot đang đi đến chính xác: ${x} ${y} ${z}`);
+          console.log(`🧭 Đang đi đến ${x} ${y} ${z}...`);
           await bot.pathfinder.goto(new GoalBlock(x, y, z));
-          console.log("✅ Bot đã đến đúng tọa độ.");
+          console.log("✅ Đã đến đích");
         } catch (err) {
-          console.log("⚠️ Lỗi khi di chuyển:", err.message);
+          console.log("⚠️ Lỗi di chuyển:", err.message);
         }
       } else {
-        console.log("⚠️ Cú pháp đúng: #goto x y z (x=23, y=55 mặc định)");
+        console.log("⚠️ Dùng: #goto x y z");
       }
       return;
     }
 
-    // Lệnh #look yaw pitch
+    // Lệnh #look
     if (input.startsWith('#look')) {
       const args = input.split(' ').slice(1);
       if (args.length === 2) {
-        const yawDeg = parseFloat(args[0]);
-        const pitchDeg = parseFloat(args[1]);
-
-        if (isNaN(yawDeg) || isNaN(pitchDeg)) {
-          console.log("⚠️ Cú pháp không hợp lệ. Ví dụ: #look 90 0");
-          return;
-        }
-
-        const yawRad = yawDeg * (Math.PI / 180);
-        const pitchRad = pitchDeg * (Math.PI / 180);
-
+        const yaw = parseFloat(args[0]);
+        const pitch = parseFloat(args[1]);
+        if (isNaN(yaw) || isNaN(pitch)) return console.log("⚠️ Góc không hợp lệ");
+        
         try {
-          await bot.look(yawRad, pitchRad);
-          console.log(`👀 Bot đã quay mặt: yaw ${yawDeg}°, pitch ${pitchDeg}°`);
+          await bot.look(yaw * Math.PI/180, pitch * Math.PI/180);
+          console.log(`👀 Đã xoay: yaw ${yaw}°, pitch ${pitch}°`);
         } catch (err) {
-          console.log("⚠️ Lỗi khi quay đầu:", err.message);
+          console.log("⚠️ Lỗi xoay:", err.message);
         }
       } else {
-        console.log("⚠️ Dùng đúng cú pháp: #look yaw pitch (VD: #look 90 0)");
+        console.log("⚠️ Dùng: #look yaw pitch");
       }
       return;
     }
 
-    // Nếu không phải lệnh đặc biệt, gửi như tin nhắn chat
-    if (input.length > 0) {
+    // Gửi chat thường
+    if (input) {
       bot.chat(input);
-      console.log(`⌨️ Gửi chat: ${input}`);
+      console.log(`⌨️ Chat: ${input}`);
     }
   });
+
+  // Xử lý sự kiện
+  bot.on('kicked', (reason) => {
+    clearInterval(checkClockInterval);
+    console.log("❌ Bị kick:", reason);
+    reconnect();
+  });
+
+  bot.on('end', () => {
+    clearInterval(checkClockInterval);
+    console.log("❌ Đã ngắt kết nối");
+    reconnect();
+  });
+
+  bot.on('error', err => console.log("⚠️ Lỗi:", err));
 }
 
 function reconnect() {
-  console.log("♻️ Tự động reconnect sau 5s...");
-  setTimeout(() => {
-    createBot();
-  }, 5000);
+  console.log("♻️ Tự động kết nối lại sau 5s...");
+  setTimeout(createBot, 5000);
 }
 
 createBot();
